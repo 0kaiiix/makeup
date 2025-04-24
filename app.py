@@ -306,7 +306,25 @@ def main():
 
     input_type = st.radio('選擇輸入方式', ['上傳照片', '使用攝像頭'])
 
-    image = None  # 預先宣告
+    # 選擇品牌和色號
+    selected_brand = st.selectbox('選擇品牌', list(LIPSTICK_COLORS.keys()))
+    selected_color = st.selectbox('選擇色號', list(LIPSTICK_COLORS[selected_brand].keys()))
+    intensity = st.slider('調整口紅顏色強度', 0.0, 0.2, 0.1)
+    
+    # 新增質地選擇和唇形修容
+    texture = st.selectbox('選擇口紅質地', ['霧面', '珠光', '絲絨'])
+    texture_map = {'霧面': 'matte', '珠光': 'pearl', '絲絨': 'velvet'}
+    
+    st.write('唇形修容')
+    col1, col2 = st.columns(2)
+    with col1:
+        scale_x = st.slider('調整唇寬', 0.8, 1.2, 1.0, 0.05)
+    with col2:
+        scale_y = st.slider('調整唇高', 0.8, 1.2, 1.0, 0.05)
+
+    # 顯示當前選擇的顏色預覽
+    color_preview = np.full((50, 200, 3), LIPSTICK_COLORS[selected_brand][selected_color], dtype=np.uint8)
+    st.image(color_preview, caption=f'{selected_brand} - {selected_color}')
 
     # 根據使用方式初始化 FaceMesh
     if input_type == '上傳照片':
@@ -316,67 +334,66 @@ def main():
             image = Image.open(uploaded_file)
             image = np.array(image)
             # PIL圖像默認為RGB格式
+            
+            # 處理圖像
+            all_lips_points = detect_lips(image, face_mesh)
+            if all_lips_points is not None:
+                result = image.copy()
+                for lips_points in all_lips_points:
+                    result = apply_lipstick(result, lips_points, 
+                                           LIPSTICK_COLORS[selected_brand][selected_color],
+                                           intensity, texture_map[texture],
+                                           (scale_x, scale_y))
+                st.image(result, caption='試妝結果')
+            else:
+                st.error('未偵測到唇部，請嘗試其他照片或調整姿勢／光線')
     else:
-        st.info("⚠️ 請確保臉部清晰、面向鏡頭，並有良好光線")
+        st.info("⚠️ 請確保臉部清晰、面向鏡頭，並有良好光線。如果是手機用戶，請允許瀏覽器使用攝像頭權限。")
         face_mesh = mp.solutions.face_mesh.FaceMesh(
             static_image_mode=False, max_num_faces=5,
             min_detection_confidence=0.5, min_tracking_confidence=0.5
         )
-        # 初始化攝像頭
-        cap = None
-        retry_count = 0
-        max_retries = 5  # 增加重試次數
-        available_cameras = [0, 1]  # 嘗試不同的攝像頭設備
         
-        for camera_id in available_cameras:
-            while retry_count < max_retries:
-                try:
-                    cap = cv2.VideoCapture(camera_id)
-                    if cap is not None and cap.isOpened():
-                        st.success(f'成功開啟攝像頭 {camera_id}')
-                        break
-                    retry_count += 1
-                    st.warning(f'嘗試開啟攝像頭 {camera_id} 第 {retry_count} 次...')
-                    time.sleep(1)
-                except Exception as e:
-                    st.error(f'開啟攝像頭時發生錯誤: {str(e)}')
-                    retry_count += 1
-            
-            if cap is not None and cap.isOpened():
+        # 使用OpenCV捕獲視頻流
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            st.error('無法訪問攝像頭，請確保已授予攝像頭權限。')
+            return
+        
+        # 創建一個佔位符來顯示視頻流
+        video_placeholder = st.empty()
+        
+        # 創建控制按鈕
+        stop_button = st.button('停止試妝')
+        
+        while not stop_button:
+            ret, frame = cap.read()
+            if not ret:
+                st.error('無法讀取攝像頭畫面')
                 break
-        
-        if cap is None or not cap.isOpened():
-            st.error('無法開啟攝像頭，請檢查：\n1. 攝像頭是否正確連接\n2. 是否已授予攝像頭權限\n3. 是否有其他程式正在使用攝像頭')
-            return
-
-        # 拍攝照片
-        st.write("請等待拍攝中...")
-        image = None
-        capture_attempts = 5  # 增加拍攝嘗試次數
-        
-        for attempt in range(capture_attempts):
-            try:
-                ret, frame = cap.read()
-                if ret and frame is not None:
-                    image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    break
-                time.sleep(0.5)  # 增加等待時間
-            except Exception as e:
-                st.warning(f'拍攝第 {attempt + 1} 次失敗: {str(e)}')
-
-        # 釋放攝像頭資源
-        try:
-            cap.release()
-        except Exception as e:
-            st.warning(f'釋放攝像頭資源時發生錯誤: {str(e)}')
-
-        if image is None:
-            st.error('無法獲取攝像頭畫面，請重試')
-            return
             
-        st.image(image, caption='拍攝畫面')
-
-        # 保持RGB格式
+            # 轉換為RGB格式
+            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # 檢測並應用口紅
+            all_lips_points = detect_lips(image, face_mesh)
+            if all_lips_points is not None:
+                for lips_points in all_lips_points:
+                    image = apply_lipstick(image, lips_points, 
+                                        LIPSTICK_COLORS[selected_brand][selected_color],
+                                        intensity, texture_map[texture],
+                                        (scale_x, scale_y))
+            
+            # 更新視頻流顯示
+            video_placeholder.image(image, channels='RGB', use_column_width=True)
+            
+            # 控制更新頻率
+            time.sleep(0.03)  # 約30FPS
+        
+        # 釋放資源
+        cap.release()
+        st.success('已停止試妝')
+        return
 
     # 處理圖像
     if image is not None:
