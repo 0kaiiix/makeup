@@ -1,5 +1,5 @@
-mediapipe==0.10.9
-opencv-python==4.8.1.78
+mediapipe==0.10.21  # 确保版本已升级
+opencv-python-headless>=4.5.0  # 或固定版本如 opencv-python-headless==4.9.0.80
 streamlit==1.29.0
 numpy==1.26.2
 Pillow==10.1.0
