@@ -396,7 +396,16 @@ def main():
         return
 
     # 處理圖像
-    if image is not None:
+    def main():
+        image = None  # 初始化变量
+        uploaded_file = st.file_uploader("上传图片")
+    
+        if uploaded_file is not None:
+            image = process_image(uploaded_file)  # 条件满足时更新 image
+    
+    # 安全访问 image
+        if image is not None:
+            display_image(image)
         # 分析膚色並推薦口紅
         skin_tone = get_skin_tone(image)
         recommendations = recommend_lipsticks(skin_tone)
@@ -406,7 +415,11 @@ def main():
             st.write(f'- {brand} {color}')
         
         # 選擇品牌和色號
-        selected_brand = st.selectbox('選擇品牌', list(LIPSTICK_COLORS.keys()))
+        selected_brand = st.selectbox(
+        '選擇品牌', 
+        list(LIPSTICK_COLORS.keys()), 
+        key="brand_selector"  # 添加唯一 key
+        )
         selected_color = st.selectbox('選擇色號', list(LIPSTICK_COLORS[selected_brand].keys()))
         intensity = st.slider('調整口紅顏色強度', 0.0, 0.2, 0.1)
         
