@@ -322,31 +322,58 @@ def main():
             static_image_mode=False, max_num_faces=5,
             min_detection_confidence=0.5, min_tracking_confidence=0.5
         )
-        cap = cv2.VideoCapture(0)
+        # 初始化攝像頭
+        cap = None
         retry_count = 0
-        max_retries = 3
-        while retry_count < max_retries and not cap.isOpened():
-            retry_count += 1
-            st.warning(f'嘗試開啟攝像頭第 {retry_count} 次...')
-            time.sleep(1)
-
-        if not cap.isOpened():
-            st.error('無法開啟攝像頭，請檢查裝置或權限設定')
-            return
-
-        # 拍攝一張
-        st.write("請等待拍攝中...")
-        for _ in range(3):
-            ret, frame = cap.read()
-            if ret:
-                image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        max_retries = 5  # 增加重試次數
+        available_cameras = [0, 1]  # 嘗試不同的攝像頭設備
+        
+        for camera_id in available_cameras:
+            while retry_count < max_retries:
+                try:
+                    cap = cv2.VideoCapture(camera_id)
+                    if cap is not None and cap.isOpened():
+                        st.success(f'成功開啟攝像頭 {camera_id}')
+                        break
+                    retry_count += 1
+                    st.warning(f'嘗試開啟攝像頭 {camera_id} 第 {retry_count} 次...')
+                    time.sleep(1)
+                except Exception as e:
+                    st.error(f'開啟攝像頭時發生錯誤: {str(e)}')
+                    retry_count += 1
+            
+            if cap is not None and cap.isOpened():
                 break
-            time.sleep(0.1)
-
-        cap.release()
-        if image is None:
-            st.error('攝像頭讀取失敗')
+        
+        if cap is None or not cap.isOpened():
+            st.error('無法開啟攝像頭，請檢查：\n1. 攝像頭是否正確連接\n2. 是否已授予攝像頭權限\n3. 是否有其他程式正在使用攝像頭')
             return
+
+        # 拍攝照片
+        st.write("請等待拍攝中...")
+        image = None
+        capture_attempts = 5  # 增加拍攝嘗試次數
+        
+        for attempt in range(capture_attempts):
+            try:
+                ret, frame = cap.read()
+                if ret and frame is not None:
+                    image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    break
+                time.sleep(0.5)  # 增加等待時間
+            except Exception as e:
+                st.warning(f'拍攝第 {attempt + 1} 次失敗: {str(e)}')
+
+        # 釋放攝像頭資源
+        try:
+            cap.release()
+        except Exception as e:
+            st.warning(f'釋放攝像頭資源時發生錯誤: {str(e)}')
+
+        if image is None:
+            st.error('無法獲取攝像頭畫面，請重試')
+            return
+            
         st.image(image, caption='拍攝畫面')
 
         # 保持RGB格式
